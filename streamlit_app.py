@@ -3,13 +3,21 @@ from datetime import date
 import streamlit as st
 import requests
 
+st.set_page_config(page_title="Kanban Board", page_icon="📌", layout="wide")
+
 DEFAULT_BOARD = {"backlog": [], "doing": [], "review": []}
 
-# Column key -> (heading, card style)
+# Column key -> (heading, card tint)
 COLUMNS = {
-    "backlog": ("Backlog", st.info),
-    "doing": ("Doing", st.warning),
-    "review": ("Review", st.success),
+    "backlog": ("Backlog", "28, 131, 225"),
+    "doing": ("Doing", "255, 189, 69"),
+    "review": ("Review", "33, 195, 84"),
+}
+
+# Column key -> (quick-move button label, icon, target column)
+QUICK_MOVES = {
+    "backlog": ("Start", ":material/play_arrow:", "doing"),
+    "doing": ("Finish", ":material/check:", "review"),
 }
 
 # --- JSONBin config (set these in Streamlit "Secrets" when you deploy) ---
@@ -97,7 +105,14 @@ def toggle_edit(column, i):
         st.session_state.editing = (column, i)
 
 
-def render_task(task, column, i, box):
+def move_task(column, i, target):
+    board = st.session_state.board
+    board[target].append(board[column].pop(i))
+    st.session_state.editing = None
+    save_changes()
+
+
+def render_task(task, column, i):
     lines = [f"**{task['title']}**"]
     if task["description"]:
         lines.append(task["description"])
@@ -107,17 +122,32 @@ def render_task(task, column, i, box):
     meta = " · ".join(m for m in meta if m)
     if meta:
         lines.append(f":small[{meta}]")
-    box("\n\n".join(lines))
+    st.markdown("\n\n".join(lines))
 
+    # Quick move and edit sit in the card's bottom-right corner
     editing = st.session_state.editing == (column, i)
-    st.button(
-        "Close" if editing else "Edit",
-        key=f"toggle_{column}_{i}",
-        icon=":material/close:" if editing else ":material/edit:",
-        type="tertiary",
-        on_click=toggle_edit,
-        args=(column, i),
-    )
+    with st.container(
+        horizontal=True, horizontal_alignment="right", gap="small"
+    ):
+        if column in QUICK_MOVES:
+            label, icon, target = QUICK_MOVES[column]
+            st.button(
+                label,
+                key=f"move_{column}_{i}",
+                icon=icon,
+                type="tertiary",
+                on_click=move_task,
+                args=(column, i, target),
+            )
+        st.button(
+            "",
+            key=f"toggle_{column}_{i}",
+            icon=":material/close:" if editing else ":material/edit:",
+            help="Close" if editing else "Edit",
+            type="tertiary",
+            on_click=toggle_edit,
+            args=(column, i),
+        )
     if not editing:
         return
 
@@ -135,9 +165,9 @@ def render_task(task, column, i, box):
             index=list(COLUMNS).index(column),
             format_func=lambda c: COLUMNS[c][0],
         )
-        save_col, delete_col = st.columns(2)
-        save = save_col.form_submit_button("Save", type="primary")
-        delete = delete_col.form_submit_button("Delete", icon=":material/delete:")
+        with st.container(horizontal=True, gap="small"):
+            save = st.form_submit_button("Save", type="primary")
+            delete = st.form_submit_button("Delete", icon=":material/delete:")
 
     board = st.session_state.board
     if delete:
@@ -167,6 +197,18 @@ if "board" not in st.session_state:
 if "editing" not in st.session_state:
     st.session_state.editing = None
 
+# Tint each card with its column's colour; containers with a key get a
+# matching st-key-<key> CSS class
+st.html(
+    "<style>"
+    + "".join(
+        f'[class*="st-key-card_{column}_"] {{'
+        f"background: rgba({tint}, 0.1); border-color: rgba({tint}, 0.35);}}"
+        for column, (_, tint) in COLUMNS.items()
+    )
+    + "</style>"
+)
+
 st.title("📌 Kanban Board")
 
 # Task input form — clears itself on submit
@@ -189,7 +231,7 @@ with st.form("new_task_form", clear_on_submit=True):
 
 # Each group sits in an expander so it can be collapsed. The stable key keeps
 # the open/closed state when the task count in the label changes.
-for col, (column, (heading, box)) in zip(st.columns(3), COLUMNS.items()):
+for col, (column, (heading, _)) in zip(st.columns(3), COLUMNS.items()):
     tasks = st.session_state.board[column]
     with col, st.expander(
         f"{heading} ({len(tasks)})", expanded=True, key=f"group_{column}"
@@ -200,4 +242,5 @@ for col, (column, (heading, box)) in zip(st.columns(3), COLUMNS.items()):
             save_changes()
             st.rerun()
         for i, task in enumerate(tasks):
-            render_task(task, column, i, box)
+            with st.container(border=True, key=f"card_{column}_{i}", gap="small"):
+                render_task(task, column, i)
