@@ -139,8 +139,12 @@ with st.form("new_task_form", clear_on_submit=True):
 
 col1, col2, col3 = st.columns(3)
 
-with col1:
-    st.header(f"Backlog ({len(st.session_state.board['backlog'])})")
+# Each group sits in an expander so it can be collapsed. The stable key keeps
+# the open/closed state when the task count in the label changes.
+
+with col1, st.expander(
+    f"Backlog ({len(st.session_state.board['backlog'])})", expanded=True, key="group_backlog"
+):
     for i, task in enumerate(st.session_state.board["backlog"]):
         render_task(task, "backlog", i, st.info)
         b1, b2 = st.columns(2)
@@ -155,8 +159,9 @@ with col1:
                 save_changes()
                 st.rerun()
 
-with col2:
-    st.header(f"Doing ({len(st.session_state.board['doing'])})")
+with col2, st.expander(
+    f"Doing ({len(st.session_state.board['doing'])})", expanded=True, key="group_doing"
+):
     for i, task in enumerate(st.session_state.board["doing"]):
         render_task(task, "doing", i, st.warning)
         b1, b2 = st.columns(2)
@@ -171,8 +176,9 @@ with col2:
                 save_changes()
                 st.rerun()
 
-with col3:
-    st.header(f"Review ({len(st.session_state.board['review'])})")
+with col3, st.expander(
+    f"Review ({len(st.session_state.board['review'])})", expanded=True, key="group_review"
+):
     if st.session_state.board["review"] and st.button("🧹 Clear All Done"):
         st.session_state.board["review"] = []
         save_changes()
