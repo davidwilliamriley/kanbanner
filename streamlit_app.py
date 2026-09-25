@@ -3,6 +3,8 @@ from datetime import date
 import streamlit as st
 import requests
 
+st.set_page_config(page_title="Kanban Board", page_icon="📌", layout="wide")
+
 DEFAULT_BOARD = {"backlog": [], "doing": [], "review": []}
 
 # Column key -> (heading, card tint)
