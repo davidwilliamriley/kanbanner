@@ -47,7 +47,7 @@ def save_changes():
 if "board" not in st.session_state:
     st.session_state.board = load_board()
 
-st.title("📌 Persistent Kanban Board")
+st.title("📌 Kanban Board")
 
 # Task input form — clears itself on submit
 with st.form("new_task_form", clear_on_submit=True):
