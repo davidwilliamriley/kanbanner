@@ -96,7 +96,7 @@ with col2:
                 st.rerun()
 
 with col3:
-    st.header(f"Done ({len(st.session_state.board['review'])})")
+    st.header(f"Review ({len(st.session_state.board['review'])})")
     if st.session_state.board["review"] and st.button("🧹 Clear All Done"):
         st.session_state.board["review"] = []
         save_changes()
