@@ -3,6 +3,8 @@ from datetime import date
 import streamlit as st
 import requests
 
+from auth import log_out, require_login
+
 st.set_page_config(page_title="Kanban Board", page_icon="📌", layout="wide")
 
 DEFAULT_BOARD = {"backlog": [], "doing": [], "review": []}
@@ -291,6 +293,8 @@ def new_task_dialog():
             st.warning("Title Can't Be Empty.")
 
 
+user = require_login()
+
 if "board" not in st.session_state:
     st.session_state.board = load_board()
 if "editing" not in st.session_state:
@@ -323,6 +327,12 @@ with st.container(horizontal=True, vertical_alignment="bottom"):
     )
     sort_by = st.selectbox("Sort By", list(SORTS), key="sort_by", width=180)
     grouped = st.toggle("Group by Tag", key="group_by_tag")
+    st.button(
+        "Log Out",
+        icon=":material/logout:",
+        help=f"Logged in as {user}",
+        on_click=log_out,
+    )
 
 # Each group sits in an expander so it can be collapsed. The stable key keeps
 # the open/closed state when the task count in the label changes.
