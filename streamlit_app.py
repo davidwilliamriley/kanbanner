@@ -64,8 +64,8 @@ with st.form("new_task_form", clear_on_submit=True):
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.header(f"To Do ({len(st.session_state.board['backlog'])})")
-    for i, task in enumerate(st.session_state.board[" backlog"]):
+    st.header(f"Backlog ({len(st.session_state.board['backlog'])})")
+    for i, task in enumerate(st.session_state.board["backlog"]):
         st.info(task)
         b1, b2 = st.columns(2)
         with b1:
