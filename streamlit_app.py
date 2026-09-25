@@ -5,6 +5,13 @@ import requests
 
 DEFAULT_BOARD = {"backlog": [], "doing": [], "review": []}
 
+# Column key -> (heading, card style)
+COLUMNS = {
+    "backlog": ("Backlog", st.info),
+    "doing": ("Doing", st.warning),
+    "review": ("Review", st.success),
+}
+
 # --- JSONBin config (set these in Streamlit "Secrets" when you deploy) ---
 # .streamlit/secrets.toml (local) or the Secrets panel on Streamlit Cloud:
 #
@@ -82,6 +89,14 @@ def due_label(task, column):
     return label
 
 
+def toggle_edit(column, i):
+    # Only one card is open for editing at a time
+    if st.session_state.editing == (column, i):
+        st.session_state.editing = None
+    else:
+        st.session_state.editing = (column, i)
+
+
 def render_task(task, column, i, box):
     lines = [f"**{task['title']}**"]
     if task["description"]:
@@ -94,28 +109,63 @@ def render_task(task, column, i, box):
         lines.append(f":small[{meta}]")
     box("\n\n".join(lines))
 
-    with st.expander("✏️ Edit"):
-        with st.form(f"edit_{column}_{i}"):
-            title = st.text_input("Title", value=task["title"])
-            description = st.text_area("Description", value=task["description"])
-            due = st.date_input(
-                "Due date",
-                value=date.fromisoformat(task["due"]) if task["due"] else None,
-                format="DD/MM/YYYY",
+    editing = st.session_state.editing == (column, i)
+    st.button(
+        "Close" if editing else "Edit",
+        key=f"toggle_{column}_{i}",
+        icon=":material/close:" if editing else ":material/edit:",
+        type="tertiary",
+        on_click=toggle_edit,
+        args=(column, i),
+    )
+    if not editing:
+        return
+
+    with st.form(f"edit_{column}_{i}"):
+        title = st.text_input("Title", value=task["title"])
+        description = st.text_area("Description", value=task["description"])
+        due = st.date_input(
+            "Due date",
+            value=date.fromisoformat(task["due"]) if task["due"] else None,
+            format="DD/MM/YYYY",
+        )
+        status = st.selectbox(
+            "Status",
+            list(COLUMNS),
+            index=list(COLUMNS).index(column),
+            format_func=lambda c: COLUMNS[c][0],
+        )
+        save_col, delete_col = st.columns(2)
+        save = save_col.form_submit_button("Save", type="primary")
+        delete = delete_col.form_submit_button("Delete", icon=":material/delete:")
+
+    board = st.session_state.board
+    if delete:
+        board[column].pop(i)
+        st.session_state.editing = None
+        save_changes()
+        st.rerun()
+    if save:
+        if title.strip():
+            updated = make_task(
+                title.strip(), description.strip(), due, task["created"]
             )
-            if st.form_submit_button("Save"):
-                if title.strip():
-                    st.session_state.board[column][i] = make_task(
-                        title.strip(), description.strip(), due, task["created"]
-                    )
-                    save_changes()
-                    st.rerun()
-                else:
-                    st.warning("Title can't be empty.")
+            if status == column:
+                board[column][i] = updated
+            else:
+                board[column].pop(i)
+                board[status].append(updated)
+            st.session_state.editing = None
+            save_changes()
+            st.rerun()
+        else:
+            st.warning("Title can't be empty.")
 
 
 if "board" not in st.session_state:
     st.session_state.board = load_board()
+if "editing" not in st.session_state:
+    st.session_state.editing = None
 
 st.title("📌 Kanban Board")
 
@@ -137,55 +187,17 @@ with st.form("new_task_form", clear_on_submit=True):
         else:
             st.warning("Task can't be empty.")
 
-col1, col2, col3 = st.columns(3)
-
 # Each group sits in an expander so it can be collapsed. The stable key keeps
 # the open/closed state when the task count in the label changes.
-
-with col1, st.expander(
-    f"Backlog ({len(st.session_state.board['backlog'])})", expanded=True, key="group_backlog"
-):
-    for i, task in enumerate(st.session_state.board["backlog"]):
-        render_task(task, "backlog", i, st.info)
-        b1, b2 = st.columns(2)
-        with b1:
-            if st.button("👉 Start", key=f"start_{i}"):
-                st.session_state.board["doing"].append(st.session_state.board["backlog"].pop(i))
-                save_changes()
-                st.rerun()
-        with b2:
-            if st.button("🗑️ Delete", key=f"del_todo_{i}"):
-                st.session_state.board["backlog"].pop(i)
-                save_changes()
-                st.rerun()
-
-with col2, st.expander(
-    f"Doing ({len(st.session_state.board['doing'])})", expanded=True, key="group_doing"
-):
-    for i, task in enumerate(st.session_state.board["doing"]):
-        render_task(task, "doing", i, st.warning)
-        b1, b2 = st.columns(2)
-        with b1:
-            if st.button("✅ Finish", key=f"done_{i}"):
-                st.session_state.board["review"].append(st.session_state.board["doing"].pop(i))
-                save_changes()
-                st.rerun()
-        with b2:
-            if st.button("🗑️ Delete", key=f"del_doing_{i}"):
-                st.session_state.board["doing"].pop(i)
-                save_changes()
-                st.rerun()
-
-with col3, st.expander(
-    f"Review ({len(st.session_state.board['review'])})", expanded=True, key="group_review"
-):
-    if st.session_state.board["review"] and st.button("🧹 Clear All Done"):
-        st.session_state.board["review"] = []
-        save_changes()
-        st.rerun()
-    for i, task in enumerate(st.session_state.board["review"]):
-        render_task(task, "review", i, st.success)
-        if st.button("🗑️ Remove", key=f"clear_{i}"):
-            st.session_state.board["review"].pop(i)
+for col, (column, (heading, box)) in zip(st.columns(3), COLUMNS.items()):
+    tasks = st.session_state.board[column]
+    with col, st.expander(
+        f"{heading} ({len(tasks)})", expanded=True, key=f"group_{column}"
+    ):
+        if column == "review" and tasks and st.button("🧹 Clear All Done"):
+            st.session_state.board["review"] = []
+            st.session_state.editing = None
             save_changes()
             st.rerun()
+        for i, task in enumerate(tasks):
+            render_task(task, column, i, box)
