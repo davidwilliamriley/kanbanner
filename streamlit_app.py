@@ -112,7 +112,7 @@ def due_label(task, column):
     if not task["due"]:
         return ""
     due = date.fromisoformat(task["due"])
-    label = f"📅 Due {due:%d %b %Y}"
+    label = f"📅 Due {due:%Y-%m-%d}"
     if column != "review":
         days = (due - date.today()).days
         if days < 0:
@@ -184,7 +184,7 @@ def render_task(task, column, i):
         lines.append(" ".join(tag_badge(tag) for tag in task["tags"]))
     meta = [due_label(task, column)]
     if task["created"]:
-        meta.append(f"Created {date.fromisoformat(task['created']):%d %b}")
+        meta.append(f"Created {date.fromisoformat(task['created']):%Y-%m-%d}")
     meta = " · ".join(m for m in meta if m)
     if meta:
         lines.append(f":small[{meta}]")
@@ -223,7 +223,7 @@ def render_task(task, column, i):
         due = st.date_input(
             "Due Date",
             value=date.fromisoformat(task["due"]) if task["due"] else None,
-            format="DD/MM/YYYY",
+            format="YYYY-MM-DD",
         )
         tags = st.multiselect(
             "Tags",
@@ -272,7 +272,7 @@ def new_task_dialog():
         description = st.text_area(
             "Description (Optional)", placeholder="Add Some Detail…"
         )
-        due = st.date_input("Due Date (Optional)", value=None, format="DD/MM/YYYY")
+        due = st.date_input("Due Date (Optional)", value=None, format="YYYY-MM-DD")
         tags = st.multiselect(
             "Tags (Optional)",
             board_tags(),
