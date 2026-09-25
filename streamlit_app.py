@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 
-DEFAULT_BOARD = {"todo": [], "doing": [], "done": []}
+DEFAULT_BOARD = {"backlog": [], "doing": [], "review": []}
 
 # --- JSONBin config (set these in Streamlit "Secrets" when you deploy) ---
 # .streamlit/secrets.toml (local) or the Secrets panel on Streamlit Cloud:
