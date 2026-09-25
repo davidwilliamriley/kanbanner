@@ -55,7 +55,7 @@ with st.form("new_task_form", clear_on_submit=True):
     submitted = st.form_submit_button("Add Task")
     if submitted:
         if new_task.strip():
-            st.session_state.board["todo"].append(new_task.strip())
+            st.session_state.board["backlog"].append(new_task.strip())
             save_changes()
             st.rerun()
         else:
@@ -64,18 +64,18 @@ with st.form("new_task_form", clear_on_submit=True):
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.header(f"To Do ({len(st.session_state.board['todo'])})")
-    for i, task in enumerate(st.session_state.board["todo"]):
+    st.header(f"To Do ({len(st.session_state.board['backlog'])})")
+    for i, task in enumerate(st.session_state.board[" backlog"]):
         st.info(task)
         b1, b2 = st.columns(2)
         with b1:
             if st.button("👉 Start", key=f"start_{i}"):
-                st.session_state.board["doing"].append(st.session_state.board["todo"].pop(i))
+                st.session_state.board["doing"].append(st.session_state.board["backlog"].pop(i))
                 save_changes()
                 st.rerun()
         with b2:
             if st.button("🗑️ Delete", key=f"del_todo_{i}"):
-                st.session_state.board["todo"].pop(i)
+                st.session_state.board["backlog"].pop(i)
                 save_changes()
                 st.rerun()
 
@@ -86,7 +86,7 @@ with col2:
         b1, b2 = st.columns(2)
         with b1:
             if st.button("✅ Finish", key=f"done_{i}"):
-                st.session_state.board["done"].append(st.session_state.board["doing"].pop(i))
+                st.session_state.board["review"].append(st.session_state.board["doing"].pop(i))
                 save_changes()
                 st.rerun()
         with b2:
@@ -96,14 +96,14 @@ with col2:
                 st.rerun()
 
 with col3:
-    st.header(f"Done ({len(st.session_state.board['done'])})")
-    if st.session_state.board["done"] and st.button("🧹 Clear All Done"):
-        st.session_state.board["done"] = []
+    st.header(f"Done ({len(st.session_state.board['review'])})")
+    if st.session_state.board["review"] and st.button("🧹 Clear All Done"):
+        st.session_state.board["review"] = []
         save_changes()
         st.rerun()
-    for i, task in enumerate(st.session_state.board["done"]):
+    for i, task in enumerate(st.session_state.board["review"]):
         st.success(task)
         if st.button("🗑️ Remove", key=f"clear_{i}"):
-            st.session_state.board["done"].pop(i)
+            st.session_state.board["review"].pop(i)
             save_changes()
             st.rerun()
