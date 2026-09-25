@@ -265,6 +265,32 @@ def render_task(task, column, i):
             st.warning("Title can't be empty.")
 
 
+@st.dialog("New task")
+def new_task_dialog():
+    with st.form("new_task_form"):
+        title = st.text_input("Title", placeholder="What needs to be done?")
+        description = st.text_area(
+            "Description (optional)", placeholder="Add some detail…"
+        )
+        due = st.date_input("Due date (optional)", value=None, format="DD/MM/YYYY")
+        tags = st.multiselect(
+            "Tags (optional)",
+            board_tags(),
+            accept_new_options=True,
+            placeholder="Choose or type a tag",
+        )
+        submitted = st.form_submit_button("Add Task", type="primary")
+    if submitted:
+        if title.strip():
+            st.session_state.board["backlog"].append(
+                make_task(title.strip(), description.strip(), due, tags=tags)
+            )
+            save_changes()
+            st.rerun()  # also closes the dialog
+        else:
+            st.warning("Title can't be empty.")
+
+
 if "board" not in st.session_state:
     st.session_state.board = load_board()
 if "editing" not in st.session_state:
@@ -284,35 +310,11 @@ st.html(
 
 st.title("📌 Kanban Board")
 
-# Task input form — clears itself on submit
-with st.form("new_task_form", clear_on_submit=True):
-    new_task = st.text_input("Create New Task", placeholder="What needs to be done?")
-    new_description = st.text_area(
-        "Description (optional)", placeholder="Add some detail…"
-    )
-    new_due = st.date_input("Due date (optional)", value=None, format="DD/MM/YYYY")
-    new_tags = st.multiselect(
-        "Tags (optional)",
-        board_tags(),
-        accept_new_options=True,
-        placeholder="Choose or type a tag",
-    )
-    submitted = st.form_submit_button("Add Task")
-    if submitted:
-        if new_task.strip():
-            st.session_state.board["backlog"].append(
-                make_task(
-                    new_task.strip(), new_description.strip(), new_due, tags=new_tags
-                )
-            )
-            save_changes()
-            st.rerun()
-        else:
-            st.warning("Task can't be empty.")
-
-# Filter, sort and group controls
+# New task button, then filter, sort and group controls
 all_tags = board_tags()
 with st.container(horizontal=True, vertical_alignment="bottom"):
+    if st.button("New Task", icon=":material/add:", type="primary"):
+        new_task_dialog()
     show_tags = st.multiselect(
         "Show only tags", all_tags, key="show_tags", placeholder="All tasks"
     )
