@@ -3,7 +3,7 @@ from datetime import date
 import streamlit as st
 import requests
 
-from auth import log_out, require_login
+from auth import LINK_PARAM, log_out, remember_link, require_login
 
 st.set_page_config(page_title="Kanban Board", page_icon="📌", layout="wide")
 
@@ -354,6 +354,24 @@ def new_task_dialog():
             st.warning("Title Can't Be Empty.")
 
 
+@st.dialog("Remember This Device")
+def remember_device_dialog():
+    token, link, days = remember_link(user)
+    st.markdown(
+        "Open the board with this link to skip logging in, even in browsers "
+        "that don't keep the login. Tap **Put Link in Address Bar**, then "
+        "bookmark the page or add it to your home screen."
+    )
+    st.warning(
+        f"Anyone with this link can open your board, so keep it private. "
+        f"It works for {days} days; changing your password cancels it."
+    )
+    st.code(link, language=None, wrap_lines=True)
+    if st.button("Put Link in Address Bar", type="primary"):
+        st.query_params[LINK_PARAM] = token
+        st.rerun()  # also closes the dialog
+
+
 user = require_login()
 
 if "board" not in st.session_state:
@@ -390,6 +408,8 @@ with st.container(horizontal=True, vertical_alignment="bottom"):
     )
     sort_by = st.selectbox("Sort By", list(SORTS), key="sort_by", width=180)
     grouped = st.toggle("Group by Tag", key="group_by_tag")
+    if st.button("Remember Device", icon=":material/devices:"):
+        remember_device_dialog()
     st.button(
         "Log Out",
         icon=":material/logout:",

@@ -5,6 +5,8 @@ Users and the cookie signing key live in Streamlit secrets:
     [auth]
     cookie_key = "a long random string"   # signs login cookies
     cookie_days = 30                       # optional, how long a login lasts
+    link_days = 365                        # optional, how long a "Remember
+                                           # This Device" link works
 
     [auth.users]
     david = "$2b$12$..."   # bcrypt hash of the password
@@ -23,6 +25,7 @@ import bcrypt
 import streamlit as st
 
 COOKIE_NAME = "kanban_auth"
+LINK_PARAM = "login"  # query parameter holding a "Remember This Device" token
 
 
 def hash_password(password):
@@ -60,7 +63,8 @@ def _config():
     users = dict(auth.get("users", {}))
     key = auth.get("cookie_key", "")
     days = int(auth.get("cookie_days", 30))
-    return users, key, days
+    link_days = int(auth.get("link_days", 365))
+    return users, key, days, link_days
 
 
 def _sign(key, payload):
@@ -104,7 +108,7 @@ def _write_cookie(value, max_age):
 
 def require_login():
     """Return the logged-in username, or show the login form and stop the app."""
-    users, key, days = _config()
+    users, key, days, _ = _config()
     if not users or not key:
         st.error(
             "Login Isn't Set Up — Add [auth] cookie_key and [auth.users] "
@@ -130,6 +134,17 @@ def require_login():
             state.user = user
             return user
 
+        # A "Remember This Device" link works where cookies aren't kept
+        link_token = st.query_params.get(LINK_PARAM)
+        if link_token:
+            user = read_token(link_token, users, key)
+            if user:
+                state.user = user
+                _write_cookie(make_token(user, users, key, days), days * 86400)
+                return user
+            del st.query_params[LINK_PARAM]
+            st.warning("This Remember-Device Link Has Expired or Is No Longer Valid.")
+
     st.title("📌 Kanban Board")
     with st.form("login_form", width=400):
         username = st.text_input("Username")
@@ -148,7 +163,16 @@ def require_login():
     st.stop()
 
 
+def remember_link(username):
+    """Return a signed token and a link that logs this user in on open."""
+    users, key, _, link_days = _config()
+    token = make_token(username, users, key, link_days)
+    base = (st.context.url or "").split("?")[0]
+    return token, f"{base}?{LINK_PARAM}={token}", link_days
+
+
 def log_out():
+    st.query_params.pop(LINK_PARAM, None)
     for name in ("user", "new_cookie"):
         st.session_state.pop(name, None)
     st.session_state.logged_out = True
