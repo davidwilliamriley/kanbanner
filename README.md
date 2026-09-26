@@ -38,13 +38,15 @@ cookie_key = "paste-a-long-random-string-here"
 cookie_days = 30  # optional
 
 [auth.users]
-david = "pbkdf2_sha256$600000$..."
+david = "$2b$12$..."
 ```
 
 - Make the cookie key with
   `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
-- Make each password hash with `python make_password_hash.py`, which asks for
-  the password and prints the hash to paste. Passwords themselves are never
+- Make each password hash with `uv run python make_password_hash.py`, which
+  asks for the password and prints a bcrypt hash to paste (bcrypt hashes from
+  other tools, starting `$2b$`, `$2a$` or `$2y$`, work too; passwords are
+  limited to 72 bytes). Passwords themselves are never
   stored.
 - To add a user, add a line under `[auth.users]`. To remove one, delete their
   line. Changing a user's password or the cookie key logs out any browser

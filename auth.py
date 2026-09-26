@@ -7,41 +7,52 @@ Users and the cookie signing key live in Streamlit secrets:
     cookie_days = 30                       # optional, how long a login lasts
 
     [auth.users]
-    david = "pbkdf2_sha256$600000$<salt>$<hash>"
+    david = "$2b$12$..."   # bcrypt hash of the password
 
 Create a password hash with:  python make_password_hash.py
 """
 
 import base64
+import functools
 import hashlib
 import hmac
 import json
-import secrets
 import time
 
+import bcrypt
 import streamlit as st
 
 COOKIE_NAME = "kanban_auth"
-ITERATIONS = 600_000
 
 
-def hash_password(password, salt=None, iterations=ITERATIONS):
-    salt = salt or secrets.token_hex(16)
-    digest = hashlib.pbkdf2_hmac(
-        "sha256", password.encode(), salt.encode(), iterations
-    ).hex()
-    return f"pbkdf2_sha256${iterations}${salt}${digest}"
+def hash_password(password):
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def _verify_pbkdf2(password, stored):
+    # Hashes made by the earlier helper ("pbkdf2_sha256$...") still work
+    try:
+        _, iterations, salt, digest = stored.split("$")
+        candidate = hashlib.pbkdf2_hmac(
+            "sha256", password.encode(), salt.encode(), int(iterations)
+        ).hex()
+    except ValueError:
+        return False
+    return hmac.compare_digest(candidate, digest)
 
 
 def verify_password(password, stored):
+    if stored.startswith("pbkdf2_sha256$"):
+        return _verify_pbkdf2(password, stored)
     try:
-        scheme, iterations, salt, _ = stored.split("$")
-    except ValueError:
+        return bcrypt.checkpw(password.encode(), stored.encode())
+    except ValueError:  # malformed hash, or a password over bcrypt's 72 bytes
         return False
-    if scheme != "pbkdf2_sha256":
-        return False
-    candidate = hash_password(password, salt, int(iterations))
-    return hmac.compare_digest(candidate, stored)
+
+
+@functools.cache
+def _dummy_hash():
+    return hash_password("dummy")
 
 
 def _config():
@@ -127,7 +138,7 @@ def require_login():
     if submitted:
         stored = users.get(username.strip())
         # Check a dummy hash for unknown users so both cases take the same time
-        if verify_password(password, stored or hash_password("", "x")) and stored:
+        if verify_password(password, stored or _dummy_hash()) and stored:
             state.user = username.strip()
             state.new_cookie = make_token(state.user, users, key, days)
             state.pop("logged_out", None)
