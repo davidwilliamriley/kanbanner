@@ -240,7 +240,9 @@ def render_archived(task, i):
 def render_task(task, column, i):
     lines = [f"**{task['title']}**"]
     if task["description"]:
-        lines.append(task["description"])
+        # Markdown joins single line breaks into one line; a trailing double
+        # space keeps each typed line on its own line
+        lines.append("  \n".join(task["description"].splitlines()))
     if task["tags"]:
         lines.append(" ".join(tag_badge(tag) for tag in task["tags"]))
     meta = [due_label(task, column)]
