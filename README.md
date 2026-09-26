@@ -36,6 +36,7 @@ the app will stay locked:
 [auth]
 cookie_key = "paste-a-long-random-string-here"
 cookie_days = 30  # optional
+link_days = 365   # optional, how long a Remember Device link works
 
 [auth.users]
 david = "$2b$12$..."
@@ -48,6 +49,11 @@ david = "$2b$12$..."
   other tools, starting `$2b$`, `$2a$` or `$2y$`, work too; passwords are
   limited to 72 bytes). Passwords themselves are never
   stored.
+- If a browser doesn't keep you logged in (some phone browsers and privacy
+  settings clear cookies), use **Remember Device** in the toolbar. It gives a
+  personal link that logs you in when opened; bookmark it or add it to your
+  home screen. Anyone with the link can open the board, so keep it private.
+  Changing your password or the cookie key cancels every such link.
 - To add a user, add a line under `[auth.users]`. To remove one, delete their
   line. Changing a user's password or the cookie key logs out any browser
   that was logged in with the old one.
