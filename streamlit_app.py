@@ -7,7 +7,8 @@ from auth import log_out, require_login
 
 st.set_page_config(page_title="Kanban Board", page_icon="📌", layout="wide")
 
-DEFAULT_BOARD = {"backlog": [], "doing": [], "review": []}
+# The archive is saved with the board but isn't one of its columns
+DEFAULT_BOARD = {"backlog": [], "doing": [], "review": [], "archive": []}
 
 # Column key -> (heading, card tint)
 COLUMNS = {
@@ -20,6 +21,7 @@ COLUMNS = {
 QUICK_MOVES = {
     "backlog": ("Start", ":material/play_arrow:", "doing"),
     "doing": ("Finish", ":material/check:", "review"),
+    "review": ("Archive", ":material/inventory_2:", "archive"),
 }
 
 # Badge colours for tags; each tag always gets the same one
@@ -76,13 +78,16 @@ def normalize_task(task):
     # Older boards stored each task as a bare string
     if isinstance(task, str):
         return make_task(task, created="")
-    return {
+    normalized = {
         "title": task.get("title", ""),
         "description": task.get("description", ""),
         "due": task.get("due"),
         "created": task.get("created", ""),
         "tags": clean_tags(task.get("tags", [])),
     }
+    if task.get("archived"):
+        normalized["archived"] = task["archived"]
+    return normalized
 
 
 def load_board():
@@ -93,8 +98,11 @@ def load_board():
         resp = requests.get(f"{BASE_URL}/latest", headers=HEADERS, timeout=10)
         resp.raise_for_status()
         data = resp.json().get("record", {})
-        if isinstance(data, dict) and all(k in data for k in DEFAULT_BOARD):
-            return {k: [normalize_task(t) for t in data[k]] for k in DEFAULT_BOARD}
+        # Boards saved before the archive existed have no "archive" list
+        if isinstance(data, dict) and all(k in data for k in COLUMNS):
+            return {
+                k: [normalize_task(t) for t in data.get(k, [])] for k in DEFAULT_BOARD
+            }
     except (requests.RequestException, ValueError):
         st.warning("Couldn't Reach JSONBin — Starting with an Empty Board.")
     return {k: [] for k in DEFAULT_BOARD}
@@ -115,7 +123,7 @@ def due_label(task, column):
         return ""
     due = date.fromisoformat(task["due"])
     label = f"📅 Due {due:%Y-%m-%d}"
-    if column != "review":
+    if column in ("backlog", "doing"):
         days = (due - date.today()).days
         if days < 0:
             label += " — **Overdue**"
@@ -173,9 +181,60 @@ def toggle_edit(column, i):
 
 def move_task(column, i, target):
     board = st.session_state.board
-    board[target].append(board[column].pop(i))
+    task = board[column].pop(i)
+    if target == "archive":
+        task["archived"] = date.today().isoformat()
+    else:
+        task.pop("archived", None)
+    board[target].append(task)
     st.session_state.editing = None
     save_changes()
+
+
+def archive_all_done():
+    board = st.session_state.board
+    for task in board["review"]:
+        task["archived"] = date.today().isoformat()
+    board["archive"].extend(board["review"])
+    board["review"] = []
+    st.session_state.editing = None
+    save_changes()
+
+
+def delete_archived(i):
+    st.session_state.board["archive"].pop(i)
+    save_changes()
+
+
+def render_archived(task, i):
+    lines = [f"**{task['title']}**"]
+    if task["tags"]:
+        lines[0] += " " + " ".join(tag_badge(tag) for tag in task["tags"])
+    meta = [due_label(task, "archive")]
+    if task.get("archived"):
+        meta.append(f"Archived {task['archived']}")
+    meta = " · ".join(m for m in meta if m)
+    if meta:
+        lines.append(f":small[{meta}]")
+    with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+        st.markdown("\n\n".join(lines), width="stretch")
+        st.button(
+            "Restore",
+            key=f"restore_{i}",
+            icon=":material/undo:",
+            help="Move Back to Review",
+            type="tertiary",
+            on_click=move_task,
+            args=("archive", i, "review"),
+        )
+        with st.popover("", icon=":material/delete:", help="Delete Permanently"):
+            st.button(
+                "Delete Permanently",
+                key=f"delete_archived_{i}",
+                type="primary",
+                on_click=delete_archived,
+                args=(i,),
+            )
 
 
 def render_task(task, column, i):
@@ -297,6 +356,8 @@ user = require_login()
 
 if "board" not in st.session_state:
     st.session_state.board = load_board()
+# A board already open from before the archive existed has no list for it
+st.session_state.board.setdefault("archive", [])
 if "editing" not in st.session_state:
     st.session_state.editing = None
 
@@ -343,11 +404,12 @@ for col, (column, (heading, _)) in zip(st.columns(3), COLUMNS.items()):
     with col, st.expander(
         f"{heading} ({count})", expanded=True, key=f"group_{column}"
     ):
-        if column == "review" and tasks and st.button("🧹 Clear All Done"):
-            st.session_state.board["review"] = []
-            st.session_state.editing = None
-            save_changes()
-            st.rerun()
+        if column == "review" and tasks:
+            st.button(
+                "Archive All Done",
+                icon=":material/inventory_2:",
+                on_click=archive_all_done,
+            )
         groups = group_by_tag(shown, show_tags) if grouped else [(None, shown)]
         for tag, items in groups:
             if grouped:
@@ -358,3 +420,16 @@ for col, (column, (heading, _)) in zip(st.columns(3), COLUMNS.items()):
                     border=True, key=f"card_{column}_{i}", gap="small"
                 ):
                     render_task(task, column, i)
+
+# Archived tasks, newest first unless another sort is chosen
+archived = st.session_state.board["archive"]
+shown = visible_tasks(archived, show_tags, hide_tags, sort_by)
+if not SORTS[sort_by]:
+    shown.reverse()
+count = f"{len(shown)} of {len(archived)}" if len(shown) < len(archived) else len(archived)
+with st.expander(f"Archive ({count})", key="group_archive"):
+    if not archived:
+        st.caption("Archived Tasks Appear Here.")
+    for i, task in shown:
+        with st.container(border=True, key=f"archived_{i}"):
+            render_archived(task, i)
