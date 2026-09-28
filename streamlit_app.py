@@ -390,6 +390,10 @@ st.html(
         f"background: rgba({tint}, 0.1); border-color: rgba({tint}, 0.35);}}"
         for column, (_, tint) in COLUMNS.items()
     )
+    # The toolbar lines controls up by their bottom edge; give the shorter
+    # toggle a button-height box so it sits on the same centreline
+    + ".st-key-group_by_tag {min-height: 2.5rem; display: flex;"
+    " align-items: center;}"
     + "</style>"
 )
 
