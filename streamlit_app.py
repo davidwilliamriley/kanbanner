@@ -245,10 +245,7 @@ def render_task(task, column, i):
         lines.append("  \n".join(task["description"].splitlines()))
     if task["tags"]:
         lines.append(" ".join(tag_badge(tag) for tag in task["tags"]))
-    meta = [due_label(task, column)]
-    if task["created"]:
-        meta.append(f"Created {date.fromisoformat(task['created']):%Y-%m-%d}")
-    meta = " · ".join(m for m in meta if m)
+    meta = due_label(task, column)
     st.markdown("\n\n".join(lines))
 
     # Dates on the left and quick move / edit on the right share the last
