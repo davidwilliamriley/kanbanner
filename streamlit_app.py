@@ -249,34 +249,39 @@ def render_task(task, column, i):
     if task["created"]:
         meta.append(f"Created {date.fromisoformat(task['created']):%Y-%m-%d}")
     meta = " · ".join(m for m in meta if m)
-    if meta:
-        lines.append(f":small[{meta}]")
     st.markdown("\n\n".join(lines))
 
-    # Quick move and edit sit in the card's bottom-right corner
+    # Dates on the left and quick move / edit on the right share the last
+    # line, wrapping onto two lines when the card is too narrow
     editing = st.session_state.editing == (column, i)
     with st.container(
-        horizontal=True, horizontal_alignment="right", gap="small"
+        horizontal=True,
+        vertical_alignment="center",
+        gap="small",
+        key=f"foot_{column}_{i}",
     ):
-        if column in QUICK_MOVES:
-            label, icon, target = QUICK_MOVES[column]
+        if meta:
+            st.markdown(f":small[{meta}]", width="stretch")
+        with st.container(horizontal=True, horizontal_alignment="right", gap="small"):
+            if column in QUICK_MOVES:
+                label, icon, target = QUICK_MOVES[column]
+                st.button(
+                    label,
+                    key=f"move_{column}_{i}",
+                    icon=icon,
+                    type="tertiary",
+                    on_click=move_task,
+                    args=(column, i, target),
+                )
             st.button(
-                label,
-                key=f"move_{column}_{i}",
-                icon=icon,
+                "",
+                key=f"toggle_{column}_{i}",
+                icon=":material/close:" if editing else ":material/edit:",
+                help="Close" if editing else "Edit",
                 type="tertiary",
-                on_click=move_task,
-                args=(column, i, target),
+                on_click=toggle_edit,
+                args=(column, i),
             )
-        st.button(
-            "",
-            key=f"toggle_{column}_{i}",
-            icon=":material/close:" if editing else ":material/edit:",
-            help="Close" if editing else "Edit",
-            type="tertiary",
-            on_click=toggle_edit,
-            args=(column, i),
-        )
     if not editing:
         return
 
@@ -394,6 +399,14 @@ st.html(
     # toggle a button-height box so it sits on the same centreline
     + ".st-key-group_by_tag {min-height: 2.5rem; display: flex;"
     " align-items: center;}"
+    # Card footers: the dates may shrink (wrapping their text) so the buttons
+    # stay on the same line, and the row only wraps below ~9rem of date room.
+    # The buttons keep their width and hug the right edge either way.
+    + '[class*="st-key-foot_"] > .stElementContainer'
+    " {flex: 1 1 9rem; min-width: 9rem;}"
+    + '[class*="st-key-foot_"] > [data-testid="stLayoutWrapper"],'
+    ' [class*="st-key-foot_"] > [data-testid="stLayoutWrapper"] > div'
+    " {flex: 0 0 auto; width: auto; margin-left: auto;}"
     + "</style>"
 )
 
