@@ -290,6 +290,8 @@ def render_task(task, column, i):
             value=date.fromisoformat(task["due"]) if task["due"] else None,
             format="YYYY-MM-DD",
         )
+        # Streamlit's date picker can't be emptied once it starts with a date
+        clear_due = task["due"] and st.checkbox("Remove Due Date")
         tags = st.multiselect(
             "Tags",
             board_tags(),
@@ -316,7 +318,11 @@ def render_task(task, column, i):
     if save:
         if title.strip():
             updated = make_task(
-                title.strip(), description.strip(), due, task["created"], tags
+                title.strip(),
+                description.strip(),
+                None if clear_due else due,
+                task["created"],
+                tags,
             )
             if status == column:
                 board[column][i] = updated
