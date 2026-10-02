@@ -21,7 +21,7 @@ import requests
 
 COLUMNS = ("backlog", "doing", "review")
 STATUSES = (*COLUMNS, "archive")
-SCHEMA = (Path(__file__).with_name("schema.sql")).read_text()
+SCHEMA = Path(__file__).with_name("schema.sql").read_text(encoding="utf-8")
 
 
 class StoreError(Exception):
