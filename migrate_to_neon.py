@@ -24,6 +24,8 @@ import requests
 
 from store import STATUSES, SCHEMA, normalize_board
 
+SECRETS_FILE = ".streamlit/secrets.toml"
+
 
 def setting(secrets, *names):
     for name in names:
@@ -33,16 +35,38 @@ def setting(secrets, *names):
     return None
 
 
+def missing(secrets, *names):
+    """Explain where the settings were looked for, and catch the common
+    mistake of putting them under a [section] heading in secrets.toml."""
+    message = f"Set {' and '.join(names)} in {SECRETS_FILE} or as environment variables."
+    if not Path(SECRETS_FILE).exists():
+        message += f" ({SECRETS_FILE} wasn't found in {Path.cwd()}.)"
+    for section, values in secrets.items():
+        if isinstance(values, dict):
+            nested = [n for n in names if n in values]
+            if nested:
+                verb, it = ("are", "them") if len(nested) > 1 else ("is", "it")
+                message += (
+                    f" {' and '.join(nested)} {verb} under the [{section}] heading;"
+                    f" move {it} above the first [...] line."
+                )
+    return message
+
+
 def read_board(args, secrets):
     if args.from_file:
-        data = json.loads(Path(args.from_file).read_text())
+        # utf-8-sig: Windows editors may add a byte-order mark
+        data = json.loads(Path(args.from_file).read_text(encoding="utf-8-sig"))
         # Accept JSONBin's own export format as well as the bare board
         data = data.get("record", data)
     else:
         bin_id = setting(secrets, "JSONBIN_BIN_ID")
         api_key = setting(secrets, "JSONBIN_API_KEY")
         if not bin_id or not api_key:
-            sys.exit("Set JSONBIN_BIN_ID and JSONBIN_API_KEY, or use --from-file.")
+            sys.exit(
+                missing(secrets, "JSONBIN_BIN_ID", "JSONBIN_API_KEY")
+                + " Or copy the board to a file and use --from-file board.json."
+            )
         resp = requests.get(
             f"https://api.jsonbin.io/v3/b/{bin_id}/latest",
             headers={"X-Master-Key": api_key},
@@ -62,8 +86,10 @@ def main():
     )
     args = parser.parse_args()
 
-    secrets_file = Path(".streamlit/secrets.toml")
-    secrets = tomllib.loads(secrets_file.read_text()) if secrets_file.exists() else {}
+    secrets_file = Path(SECRETS_FILE)
+    secrets = {}
+    if secrets_file.exists():
+        secrets = tomllib.loads(secrets_file.read_text(encoding="utf-8-sig"))
 
     board = read_board(args, secrets)
     counts = {status: len(board[status]) for status in STATUSES}
@@ -73,7 +99,7 @@ def main():
 
     url = setting(secrets, "DATABASE_URL_POOLED", "DATABASE_URL")
     if not url:
-        sys.exit("Set DATABASE_URL_POOLED (or DATABASE_URL).")
+        sys.exit(missing(secrets, "DATABASE_URL_POOLED"))
 
     import psycopg
 
