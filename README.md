@@ -57,3 +57,45 @@ david = "$2b$12$..."
 - To add a user, add a line under `[auth.users]`. To remove one, delete their
   line. Changing a user's password or the cookie key logs out any browser
   that was logged in with the old one.
+
+### Where the board is saved
+
+The board can be saved in **JSONBin** (the original setup: the whole board is
+one JSON document) or in a **Neon** Postgres database (one row per task, so
+changes made on different devices don't overwrite each other). Choose with
+`STORAGE` in your Streamlit secrets:
+
+```toml
+# JSONBin (the default when STORAGE isn't set)
+JSONBIN_BIN_ID = "your-bin-id"
+JSONBIN_API_KEY = "your-x-master-key"
+
+# Neon
+STORAGE = "neon"
+DATABASE_URL_POOLED = "postgresql://...-pooler...neon.tech/neondb?sslmode=require&channel_binding=require"
+```
+
+#### Moving from JSONBin to Neon
+
+1. In Neon, create a project and copy the **pooled** connection string
+   (`DATABASE_URL_POOLED`, its host contains `-pooler`).
+2. On your own machine, put `DATABASE_URL_POOLED` and your JSONBin settings
+   in `.streamlit/secrets.toml` (never commit this file), then run:
+
+   ```
+   $ uv run python migrate_to_neon.py --dry-run   # shows what will be copied
+   $ uv run python migrate_to_neon.py             # copies the board into Neon
+   ```
+
+   It creates the `tasks` table, copies every column in order (with archived
+   dates), and checks the counts. It refuses to run twice; `--replace`
+   deletes the copied tasks and starts again. To copy a saved board file
+   instead of reading JSONBin, use `--from-file board.json`.
+3. In the app's **Settings → Secrets** on Streamlit Community Cloud, add
+   `STORAGE = "neon"` and `DATABASE_URL_POOLED = "..."`, then reboot the app.
+
+To switch back, remove `STORAGE` (or set it to `"jsonbin"`). JSONBin isn't
+changed by the move, but changes made while using Neon aren't copied back.
+
+Neon's free database sleeps when unused and wakes on the next visit, so the
+first load after a quiet spell can take a second or two.

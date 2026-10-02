@@ -1,14 +1,12 @@
+import uuid
 from datetime import date
 
 import streamlit as st
-import requests
 
 from auth import LINK_PARAM, log_out, remember_link, require_login
+from store import StoreError, get_store, make_task
 
 st.set_page_config(page_title="Kanban Board", page_icon="📌", layout="wide")
-
-# The archive is saved with the board but isn't one of its columns
-DEFAULT_BOARD = {"backlog": [], "doing": [], "review": [], "archive": []}
 
 # Column key -> (heading, card tint)
 COLUMNS = {
@@ -35,87 +33,7 @@ SORTS = {
     "Newest First": (lambda t: t["created"] or "", True),
 }
 
-# --- JSONBin config (set these in Streamlit "Secrets" when you deploy) ---
-# .streamlit/secrets.toml (local) or the Secrets panel on Streamlit Cloud:
-#
-# JSONBIN_BIN_ID = "your-bin-id"
-# JSONBIN_API_KEY = "your-x-master-key"
-#
-BIN_ID = st.secrets.get("JSONBIN_BIN_ID", "")
-API_KEY = st.secrets.get("JSONBIN_API_KEY", "")
-
-BASE_URL = f"https://api.jsonbin.io/v3/b/{BIN_ID}"
-HEADERS = {
-    "X-Master-Key": API_KEY,
-    "Content-Type": "application/json",
-}
-
-
-def clean_tags(tags):
-    # Trim, drop blanks and case-insensitive duplicates, keep the given order.
-    # Square brackets would break the badge markdown, so they're removed.
-    cleaned, seen = [], set()
-    for tag in tags:
-        tag = tag.replace("[", "").replace("]", "").strip()
-        if tag and tag.casefold() not in seen:
-            seen.add(tag.casefold())
-            cleaned.append(tag)
-    return cleaned
-
-
-def make_task(title, description="", due=None, created=None, tags=()):
-    # Dates are stored as ISO strings so the board stays plain JSON
-    return {
-        "title": title,
-        "description": description,
-        "due": due.isoformat() if due else None,
-        "created": date.today().isoformat() if created is None else created,
-        "tags": clean_tags(tags),
-    }
-
-
-def normalize_task(task):
-    # Older boards stored each task as a bare string
-    if isinstance(task, str):
-        return make_task(task, created="")
-    normalized = {
-        "title": task.get("title", ""),
-        "description": task.get("description", ""),
-        "due": task.get("due"),
-        "created": task.get("created", ""),
-        "tags": clean_tags(task.get("tags", [])),
-    }
-    if task.get("archived"):
-        normalized["archived"] = task["archived"]
-    return normalized
-
-
-def load_board():
-    if not BIN_ID or not API_KEY:
-        st.error("Missing JSONBIN_BIN_ID / JSONBIN_API_KEY in Streamlit Secrets.")
-        return {k: [] for k in DEFAULT_BOARD}
-    try:
-        resp = requests.get(f"{BASE_URL}/latest", headers=HEADERS, timeout=10)
-        resp.raise_for_status()
-        data = resp.json().get("record", {})
-        # Boards saved before the archive existed have no "archive" list
-        if isinstance(data, dict) and all(k in data for k in COLUMNS):
-            return {
-                k: [normalize_task(t) for t in data.get(k, [])] for k in DEFAULT_BOARD
-            }
-    except (requests.RequestException, ValueError):
-        st.warning("Couldn't Reach JSONBin — Starting with an Empty Board.")
-    return {k: [] for k in DEFAULT_BOARD}
-
-
-def save_changes():
-    try:
-        resp = requests.put(
-            BASE_URL, headers=HEADERS, json=st.session_state.board, timeout=10
-        )
-        resp.raise_for_status()
-    except requests.RequestException:
-        st.error("Couldn't Save to JSONBin — Your Change May Not Persist.")
+# Where the board is saved is set by STORAGE in Streamlit Secrets; see store.py
 
 
 def due_label(task, column):
@@ -148,65 +66,65 @@ def tag_badge(tag):
 
 
 def visible_tasks(tasks, show_tags, hide_tags, sort_by):
-    # Keep each task's board index so buttons still act on the right task
     shown = [
-        (i, t)
-        for i, t in enumerate(tasks)
+        t
+        for t in tasks
         if (not show_tags or set(t["tags"]) & set(show_tags))
         and not set(t["tags"]) & set(hide_tags)
     ]
     if SORTS[sort_by]:
         key, reverse = SORTS[sort_by]
-        shown.sort(key=lambda item: key(item[1]), reverse=reverse)
+        shown.sort(key=key, reverse=reverse)
     return shown
 
 
 def group_by_tag(shown, show_tags):
     # A task sits under its first tag, or its first shown tag when filtering
     groups = {}
-    for i, t in shown:
+    for t in shown:
         tags = [tag for tag in t["tags"] if tag in show_tags] or t["tags"]
-        groups.setdefault(tags[0] if tags else None, []).append((i, t))
+        groups.setdefault(tags[0] if tags else None, []).append(t)
     order = sorted((g for g in groups if g), key=str.casefold)
     return [(g, groups[g]) for g in order + ([None] if None in groups else [])]
 
 
-def toggle_edit(column, i):
+def report(error):
+    # Shown at the top of the next run, so a rerun right after doesn't hide it
+    st.session_state.store_error = str(error)
+
+
+def toggle_edit(task_id):
     # Only one card is open for editing at a time
-    if st.session_state.editing == (column, i):
+    if st.session_state.editing == task_id:
         st.session_state.editing = None
     else:
-        st.session_state.editing = (column, i)
+        st.session_state.editing = task_id
 
 
-def move_task(column, i, target):
-    board = st.session_state.board
-    task = board[column].pop(i)
-    if target == "archive":
-        task["archived"] = date.today().isoformat()
-    else:
-        task.pop("archived", None)
-    board[target].append(task)
+def move_task(task_id, target):
     st.session_state.editing = None
-    save_changes()
+    try:
+        store.move(st.session_state.board, task_id, target, date.today())
+    except StoreError as e:
+        report(e)
 
 
 def archive_all_done():
-    board = st.session_state.board
-    for task in board["review"]:
-        task["archived"] = date.today().isoformat()
-    board["archive"].extend(board["review"])
-    board["review"] = []
     st.session_state.editing = None
-    save_changes()
+    try:
+        store.archive_all(st.session_state.board, date.today())
+    except StoreError as e:
+        report(e)
 
 
-def delete_archived(i):
-    st.session_state.board["archive"].pop(i)
-    save_changes()
+def delete_task(task_id):
+    try:
+        store.delete(st.session_state.board, task_id)
+    except StoreError as e:
+        report(e)
 
 
-def render_archived(task, i):
+def render_archived(task):
     lines = [f"**{task['title']}**"]
     if task["tags"]:
         lines[0] += " " + " ".join(tag_badge(tag) for tag in task["tags"])
@@ -220,24 +138,24 @@ def render_archived(task, i):
         st.markdown("\n\n".join(lines), width="stretch")
         st.button(
             "Restore",
-            key=f"restore_{i}",
+            key=f"restore_{task['id']}",
             icon=":material/undo:",
             help="Move Back to Review",
             type="tertiary",
             on_click=move_task,
-            args=("archive", i, "review"),
+            args=(task["id"], "review"),
         )
         with st.popover("", icon=":material/delete:", help="Delete Permanently"):
             st.button(
                 "Delete Permanently",
-                key=f"delete_archived_{i}",
+                key=f"delete_archived_{task['id']}",
                 type="primary",
-                on_click=delete_archived,
-                args=(i,),
+                on_click=delete_task,
+                args=(task["id"],),
             )
 
 
-def render_task(task, column, i):
+def render_task(task, column):
     lines = [f"**{task['title']}**"]
     if task["description"]:
         # Markdown joins single line breaks into one line; a trailing double
@@ -250,12 +168,12 @@ def render_task(task, column, i):
 
     # Dates on the left and quick move / edit on the right share the last
     # line, wrapping onto two lines when the card is too narrow
-    editing = st.session_state.editing == (column, i)
+    editing = st.session_state.editing == task["id"]
     with st.container(
         horizontal=True,
         vertical_alignment="center",
         gap="small",
-        key=f"foot_{column}_{i}",
+        key=f"foot_{column}_{task['id']}",
     ):
         if meta:
             st.markdown(f":small[{meta}]", width="stretch")
@@ -264,25 +182,25 @@ def render_task(task, column, i):
                 label, icon, target = QUICK_MOVES[column]
                 st.button(
                     label,
-                    key=f"move_{column}_{i}",
+                    key=f"move_{task['id']}",
                     icon=icon,
                     type="tertiary",
                     on_click=move_task,
-                    args=(column, i, target),
+                    args=(task["id"], target),
                 )
             st.button(
                 "",
-                key=f"toggle_{column}_{i}",
+                key=f"toggle_{task['id']}",
                 icon=":material/close:" if editing else ":material/edit:",
                 help="Close" if editing else "Edit",
                 type="tertiary",
                 on_click=toggle_edit,
-                args=(column, i),
+                args=(task["id"],),
             )
     if not editing:
         return
 
-    with st.form(f"edit_{column}_{i}"):
+    with st.form(f"edit_{task['id']}"):
         title = st.text_input("Title", value=task["title"])
         description = st.text_area("Description", value=task["description"])
         due = st.date_input(
@@ -309,11 +227,9 @@ def render_task(task, column, i):
             save = st.form_submit_button("Save", type="primary")
             delete = st.form_submit_button("Delete", icon=":material/delete:")
 
-    board = st.session_state.board
     if delete:
-        board[column].pop(i)
         st.session_state.editing = None
-        save_changes()
+        delete_task(task["id"])
         st.rerun()
     if save:
         if title.strip():
@@ -323,14 +239,13 @@ def render_task(task, column, i):
                 None if clear_due else due,
                 task["created"],
                 tags,
+                id=task["id"],
             )
-            if status == column:
-                board[column][i] = updated
-            else:
-                board[column].pop(i)
-                board[status].append(updated)
             st.session_state.editing = None
-            save_changes()
+            try:
+                store.update(st.session_state.board, task["id"], updated, status)
+            except StoreError as e:
+                report(e)
             st.rerun()
         else:
             st.warning("Title Can't Be Empty.")
@@ -353,10 +268,11 @@ def new_task_dialog():
         submitted = st.form_submit_button("Add Task", type="primary")
     if submitted:
         if title.strip():
-            st.session_state.board["backlog"].append(
-                make_task(title.strip(), description.strip(), due, tags=tags)
-            )
-            save_changes()
+            task = make_task(title.strip(), description.strip(), due, tags=tags)
+            try:
+                store.add(st.session_state.board, task)
+            except StoreError as e:
+                report(e)
             st.rerun()  # also closes the dialog
         else:
             st.warning("Title Can't Be Empty.")
@@ -382,12 +298,31 @@ def remember_device_dialog():
 
 user = require_login()
 
-if "board" not in st.session_state:
-    st.session_state.board = load_board()
-# A board already open from before the archive existed has no list for it
+
+@st.cache_resource
+def cached_store(secrets_items):
+    return get_store(dict(secrets_items))
+
+
+try:
+    store = cached_store(tuple(sorted(
+        (k, v) for k, v in st.secrets.items() if isinstance(v, str)
+    )))
+    if store.reload_each_run or "board" not in st.session_state:
+        st.session_state.board = store.load()
+except StoreError as e:
+    # Never show (and later save) an empty board in place of the real one
+    st.error(f"{e} Reload the Page to Try Again.")
+    st.stop()
+# A board opened before the archive or task ids existed may lack them
 st.session_state.board.setdefault("archive", [])
+for tasks in st.session_state.board.values():
+    for t in tasks:
+        t.setdefault("id", str(uuid.uuid4()))
 if "editing" not in st.session_state:
     st.session_state.editing = None
+if "store_error" in st.session_state:
+    st.error(st.session_state.pop("store_error"))
 
 # Tint each card with its column's colour; containers with a key get a
 # matching st-key-<key> CSS class
@@ -457,11 +392,11 @@ for col, (column, (heading, _)) in zip(st.columns(3), COLUMNS.items()):
             if grouped:
                 header = tag_badge(tag) if tag else "**No Tag**"
                 st.markdown(f"{header} :small[{len(items)}]")
-            for i, task in items:
+            for task in items:
                 with st.container(
-                    border=True, key=f"card_{column}_{i}", gap="small"
+                    border=True, key=f"card_{column}_{task['id']}", gap="small"
                 ):
-                    render_task(task, column, i)
+                    render_task(task, column)
 
 # Archived tasks, newest first unless another sort is chosen
 archived = st.session_state.board["archive"]
@@ -472,6 +407,6 @@ count = f"{len(shown)} of {len(archived)}" if len(shown) < len(archived) else le
 with st.expander(f"Archive ({count})", key="group_archive"):
     if not archived:
         st.caption("Archived Tasks Appear Here.")
-    for i, task in shown:
-        with st.container(border=True, key=f"archived_{i}"):
-            render_archived(task, i)
+    for task in shown:
+        with st.container(border=True, key=f"archived_{task['id']}"):
+            render_archived(task)
