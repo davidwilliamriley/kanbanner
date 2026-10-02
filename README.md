@@ -2,8 +2,6 @@
 
 A simple Streamlit app for Kanban Boards
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://blank-app-template.streamlit.app/)
-
 ### How to run it on your own machine
 
 Prerequisite: install `uv` if you don't already have it.
