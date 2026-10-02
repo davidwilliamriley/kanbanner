@@ -1,0 +1,39 @@
+# Weekly encrypted backup of the board in Neon. The repository is public, so
+# the backup is encrypted with BACKUP_PASSPHRASE and the log only shows counts.
+# Needs two repository secrets: DATABASE_URL_POOLED and BACKUP_PASSPHRASE.
+name: Weekly Board Backup
+
+on:
+  schedule:
+    - cron: "0 17 * * 6"  # Saturday 17:00 UTC = Sunday 3-4 am in Sydney
+  workflow_dispatch:       # "Run workflow" button for a backup on demand
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install "psycopg[binary]" cryptography requests
+
+      - name: Export and encrypt the board
+        env:
+          DATABASE_URL_POOLED: ${{ secrets.DATABASE_URL_POOLED }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: python backup_board.py export --out "backup-$(date -u +%F).kbk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: board-backup-${{ github.run_number }}
+          path: backup-*.kbk
+          retention-days: 90
+          if-no-files-found: error

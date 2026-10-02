@@ -99,3 +99,36 @@ changed by the move, but changes made while using Neon aren't copied back.
 
 Neon's free database sleeps when unused and wakes on the next visit, so the
 first load after a quiet spell can take a second or two.
+
+### Weekly backups
+
+A GitHub Action (`.github/workflows/backup.yml`) copies the Neon board every
+Sunday at about 3 am Sydney time and keeps each copy for 90 days under the
+run's **Artifacts**. The repository is public, so anyone can download those
+files: each backup is encrypted with a passphrase only you know, and the
+logs show task counts, never task text.
+
+To set it up, in GitHub open **Settings → Secrets and variables → Actions**
+and add two repository secrets:
+
+- `DATABASE_URL_POOLED`: the same pooled Neon connection string the app uses.
+- `BACKUP_PASSPHRASE`: at least 12 characters. Keep it in a password
+  manager; without it the backups can't be opened.
+
+To check it works, open **Actions → Weekly Board Backup → Run workflow**.
+GitHub pauses scheduled workflows in a public repository after 60 days with
+no commits; it emails you first, and **Enable workflow** on that page turns
+it back on.
+
+To restore, download the artifact, unzip it, then on your own machine (with
+`DATABASE_URL_POOLED` in `.streamlit/secrets.toml`):
+
+```
+$ uv run --with cryptography python backup_board.py decrypt backup-2026-10-04.kbk
+$ uv run python migrate_to_neon.py --from-file board.json --replace
+```
+
+`decrypt` asks for the passphrase and writes `board.json`; `--replace`
+deletes the tasks in Neon and loads the backup in their place. Delete
+`board.json` afterwards (it's ignored by git, but it is your board in plain
+text).
