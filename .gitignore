@@ -1,4 +1,8 @@
+# Secrets and task data must never be committed (the repository is public)
+secrets.toml
 .streamlit/secrets.toml
+*.kbk
+board*.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
