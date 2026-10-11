@@ -1,9 +1,9 @@
 """Copy the board from JSONBin (or a saved JSON file) into the Neon database.
 
 Usage:
-    python migrate_to_neon.py                      # read the board from JSONBin
-    python migrate_to_neon.py --from-file board.json
-    python migrate_to_neon.py --dry-run            # show what would be copied
+    python -m scripts.migrate_to_neon               # read the board from JSONBin
+    python -m scripts.migrate_to_neon --from-file board.json
+    python -m scripts.migrate_to_neon --dry-run     # show what would be copied
 
 Settings come from .streamlit/secrets.toml (DATABASE_URL_POOLED or
 DATABASE_URL, plus JSONBIN_BIN_ID and JSONBIN_API_KEY when reading JSONBin),

@@ -1,4 +1,4 @@
--- The board's table in Neon. The app and migrate_to_neon.py create it
+-- The board's table in Neon. The app and scripts/migrate_to_neon.py create it
 -- automatically if it doesn't exist, so running this by hand is optional.
 create table if not exists tasks (
     id uuid primary key default gen_random_uuid(),

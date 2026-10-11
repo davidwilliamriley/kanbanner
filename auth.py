@@ -11,7 +11,7 @@ Users and the cookie signing key live in Streamlit secrets:
     [auth.users]
     david = "$2b$12$..."   # bcrypt hash of the password
 
-Create a password hash with:  python make_password_hash.py
+Create a password hash with:  python -m scripts.make_password_hash
 """
 
 import base64

@@ -42,7 +42,7 @@ david = "$2b$12$..."
 
 - Make the cookie key with
   `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
-- Make each password hash with `uv run python make_password_hash.py`, which
+- Make each password hash with `uv run python -m scripts.make_password_hash`, which
   asks for the password and prints a bcrypt hash to paste (bcrypt hashes from
   other tools, starting `$2b$`, `$2a$` or `$2y$`, work too; passwords are
   limited to 72 bytes). Passwords themselves are never
@@ -81,8 +81,8 @@ DATABASE_URL_POOLED = "postgresql://...-pooler...neon.tech/neondb?sslmode=requir
    in `.streamlit/secrets.toml` (never commit this file), then run:
 
    ```
-   $ uv run python migrate_to_neon.py --dry-run   # shows what will be copied
-   $ uv run python migrate_to_neon.py             # copies the board into Neon
+   $ uv run python -m scripts.migrate_to_neon --dry-run  # shows what will be copied
+   $ uv run python -m scripts.migrate_to_neon            # copies the board into Neon
    ```
 
    It creates the `tasks` table, copies every column in order (with archived
@@ -122,8 +122,8 @@ To restore, download the artifact, unzip it, then on your own machine (with
 `DATABASE_URL_POOLED` in `.streamlit/secrets.toml`):
 
 ```
-$ uv run --with cryptography python backup_board.py decrypt backup-2026-10-04.kbk
-$ uv run python migrate_to_neon.py --from-file board.json --replace
+$ uv run --with cryptography python -m scripts.backup_board decrypt backup-2026-10-04.kbk
+$ uv run python -m scripts.migrate_to_neon --from-file board.json --replace
 ```
 
 `decrypt` asks for the passphrase and writes `board.json`; `--replace`
