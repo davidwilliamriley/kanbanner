@@ -1,7 +1,7 @@
 """Encrypted backups of the board stored in Neon.
 
-    python backup_board.py export                  # writes backup-YYYY-MM-DD.kbk
-    python backup_board.py decrypt backup-....kbk  # writes board.json
+    python -m scripts.backup_board export                  # writes backup-YYYY-MM-DD.kbk
+    python -m scripts.backup_board decrypt backup-....kbk  # writes board.json
 
 The weekly GitHub Action (.github/workflows/backup.yml) runs "export". The
 repository is public, so backups are encrypted with BACKUP_PASSPHRASE and
@@ -9,13 +9,13 @@ the script only ever prints task counts, never task text.
 
 To restore, decrypt a backup and copy it back into Neon:
 
-    python backup_board.py decrypt backup-2026-10-04.kbk
-    python migrate_to_neon.py --from-file board.json --replace
+    python -m scripts.backup_board decrypt backup-2026-10-04.kbk
+    python -m scripts.migrate_to_neon --from-file board.json --replace
 
 Settings come from environment variables or .streamlit/secrets.toml:
 DATABASE_URL_POOLED (or DATABASE_URL) and BACKUP_PASSPHRASE. "decrypt" asks
 for the passphrase if BACKUP_PASSPHRASE isn't set. Needs the "cryptography"
-package: uv run --with cryptography python backup_board.py ...
+package: uv run --with cryptography python -m scripts.backup_board ...
 """
 
 import argparse

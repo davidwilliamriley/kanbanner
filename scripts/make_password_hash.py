@@ -1,6 +1,6 @@
 """Print a password hash to paste under [auth.users] in Streamlit secrets.
 
-Usage:  python make_password_hash.py
+Usage:  python -m scripts.make_password_hash
 """
 
 from getpass import getpass
