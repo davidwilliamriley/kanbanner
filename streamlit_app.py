@@ -101,13 +101,21 @@ def due_matches(task, column, due_filter):
     return test(due, date.today())
 
 
-def visible_tasks(tasks, column, show_tags, hide_tags, due_filter, sort_by):
+def search_matches(task, words):
+    # Every word must appear somewhere in the title, description or tags,
+    # ignoring case
+    text = " ".join([task["title"], task["description"], *task["tags"]]).casefold()
+    return all(word in text for word in words)
+
+
+def visible_tasks(tasks, column, show_tags, hide_tags, due_filter, words, sort_by):
     shown = [
         t
         for t in tasks
         if (not show_tags or set(t["tags"]) & set(show_tags))
         and not set(t["tags"]) & set(hide_tags)
         and due_matches(t, column, due_filter)
+        and search_matches(t, words)
     ]
     if SORTS[sort_by]:
         key, reverse = SORTS[sort_by]
@@ -387,11 +395,18 @@ st.html(
 
 st.title("📌 Kanbanner")
 
-# New task button, then filter, sort and group controls
+# New task button, then search, filter, sort and group controls
 all_tags = board_tags()
 with st.container(horizontal=True, vertical_alignment="bottom"):
     if st.button("New Task", icon=":material/add:", type="primary"):
         new_task_dialog()
+    search = st.text_input(
+        "Search",
+        key="search",
+        placeholder="Title, Description or Tag",
+        icon=":material/search:",
+        width=230,
+    )
     show_tags = st.multiselect(
         "Show Only Tags", all_tags, key="show_tags", placeholder="All Tasks"
     )
@@ -412,12 +427,14 @@ with st.container(horizontal=True, vertical_alignment="bottom"):
         on_click=log_out,
     )
 
+words = search.casefold().split()
+
 # Each group sits in an expander so it can be collapsed. The stable key keeps
 # the open/closed state when the task count in the label changes.
 for col, (column, (heading, _)) in zip(st.columns(3), COLUMNS.items()):
     tasks = st.session_state.board[column]
     shown = visible_tasks(
-        tasks, column, show_tags, hide_tags, due_filter, sort_by
+        tasks, column, show_tags, hide_tags, due_filter, words, sort_by
     )
     count = f"{len(shown)} of {len(tasks)}" if len(shown) < len(tasks) else len(tasks)
     with col, st.expander(
@@ -443,7 +460,7 @@ for col, (column, (heading, _)) in zip(st.columns(3), COLUMNS.items()):
 # Archived tasks, newest first unless another sort is chosen
 archived = st.session_state.board["archive"]
 shown = visible_tasks(
-    archived, "archive", show_tags, hide_tags, due_filter, sort_by
+    archived, "archive", show_tags, hide_tags, due_filter, words, sort_by
 )
 if not SORTS[sort_by]:
     shown.reverse()
