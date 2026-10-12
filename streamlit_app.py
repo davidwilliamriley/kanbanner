@@ -133,6 +133,10 @@ def group_by_tag(shown, show_tags):
     return [(g, groups[g]) for g in order + ([None] if None in groups else [])]
 
 
+def clear_search():
+    st.session_state.search = ""
+
+
 def report(error):
     # Shown at the top of the next run, so a rerun right after doesn't hide it
     st.session_state.store_error = str(error)
@@ -382,6 +386,9 @@ st.html(
     # toggle a button-height box so it sits on the same centreline
     + ".st-key-group_by_tag {min-height: 2.5rem; display: flex;"
     " align-items: center;}"
+    # The clear button sits inside the right end of the search box
+    + ".st-key-clear_search {margin-left: -2.25rem; z-index: 1;"
+    " min-height: 2.5rem; display: flex; align-items: center;}"
     # Card footers: the dates may shrink (wrapping their text) so the buttons
     # stay on the same line, and the row only wraps below ~9rem of date room.
     # The buttons keep their width and hug the right edge either way.
@@ -400,13 +407,25 @@ all_tags = board_tags()
 with st.container(horizontal=True, vertical_alignment="bottom"):
     if st.button("New Task", icon=":material/add:", type="primary"):
         new_task_dialog()
-    search = st.text_input(
-        "Search",
-        key="search",
-        placeholder="Title, Description or Tag",
-        icon=":material/search:",
-        width=230,
-    )
+    with st.container(
+        horizontal=True, gap=None, vertical_alignment="bottom", width="content"
+    ):
+        search = st.text_input(
+            "Search",
+            key="search",
+            placeholder="Title, Description or Tag",
+            icon=":material/search:",
+            width=230,
+        )
+        if search:
+            st.button(
+                "",
+                icon=":material/close:",
+                type="tertiary",
+                key="clear_search",
+                help="Clear Search",
+                on_click=clear_search,
+            )
     show_tags = st.multiselect(
         "Show Only Tags", all_tags, key="show_tags", placeholder="All Tasks"
     )
