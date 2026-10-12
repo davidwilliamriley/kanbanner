@@ -145,7 +145,7 @@ def require_login():
             del st.query_params[LINK_PARAM]
             st.warning("This Remember-Device Link Has Expired or Is No Longer Valid.")
 
-    st.title("📌 Kanban Board")
+    st.title("📌 Kanbanner")
     with st.form("login_form", width=400):
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
