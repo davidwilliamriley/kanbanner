@@ -34,19 +34,22 @@ SORTS = {
 }
 
 # Due filter option -> test of (due date, today); due is None when there's none.
+# Weeks run Monday to Sunday.
 # Finished work isn't overdue, so the overdue options skip Review and Archive.
 DUE_FILTERS = {
     "Any Due Date": None,
     "Overdue": lambda due, today: due is not None and due < today,
-    "Overdue < 7 Days": lambda due, today: due is not None
-    and 0 < (today - due).days < 7,
     "Overdue 7+ Days": lambda due, today: due is not None
     and (today - due).days >= 7,
+    "Overdue < 7 Days": lambda due, today: due is not None
+    and 0 < (today - due).days < 7,
     "Due Today": lambda due, today: due == today,
     "Due Within 3 Days": lambda due, today: due is not None
     and 0 <= (due - today).days <= 3,
     "Due Within 7 Days": lambda due, today: due is not None
     and 0 <= (due - today).days <= 7,
+    "Due This Week": lambda due, today: due is not None
+    and due.isocalendar()[:2] == today.isocalendar()[:2],
     "Due This Month": lambda due, today: due is not None
     and (due.year, due.month) == (today.year, today.month),
     "Due Next Month": lambda due, today: due is not None
