@@ -6,7 +6,7 @@ import streamlit as st
 from auth import LINK_PARAM, log_out, remember_link, require_login
 from store import StoreError, get_store, make_task
 
-st.set_page_config(page_title="Kanban Board", page_icon="📌", layout="wide")
+st.set_page_config(page_title="Kanbanner", page_icon="📌", layout="wide")
 
 # Column key -> (heading, card tint)
 COLUMNS = {
@@ -385,7 +385,7 @@ st.html(
     + "</style>"
 )
 
-st.title("📌 Kanban Board")
+st.title("📌 Kanbanner")
 
 # New task button, then filter, sort and group controls
 all_tags = board_tags()
