@@ -33,6 +33,29 @@ SORTS = {
     "Newest First": (lambda t: t["created"] or "", True),
 }
 
+# Due filter option -> test of (due date, today); due is None when there's none.
+# Finished work isn't overdue, so the overdue options skip Review and Archive.
+DUE_FILTERS = {
+    "Any Due Date": None,
+    "Overdue": lambda due, today: due is not None and due < today,
+    "Overdue < 7 Days": lambda due, today: due is not None
+    and 0 < (today - due).days < 7,
+    "Overdue 7+ Days": lambda due, today: due is not None
+    and (today - due).days >= 7,
+    "Due Today": lambda due, today: due == today,
+    "Due Within 3 Days": lambda due, today: due is not None
+    and 0 <= (due - today).days <= 3,
+    "Due Within 7 Days": lambda due, today: due is not None
+    and 0 <= (due - today).days <= 7,
+    "Due This Month": lambda due, today: due is not None
+    and (due.year, due.month) == (today.year, today.month),
+    "Due Next Month": lambda due, today: due is not None
+    and (due.year, due.month)
+    == (today.year + today.month // 12, today.month % 12 + 1),
+    "No Due Date": lambda due, today: due is None,
+}
+OVERDUE_FILTERS = {"Overdue", "Overdue < 7 Days", "Overdue 7+ Days"}
+
 # Where the board is saved is set by STORAGE in Streamlit Secrets; see store.py
 
 
@@ -65,12 +88,23 @@ def tag_badge(tag):
     return f":{color}-badge[{tag}]"
 
 
-def visible_tasks(tasks, show_tags, hide_tags, sort_by):
+def due_matches(task, column, due_filter):
+    test = DUE_FILTERS[due_filter]
+    if test is None:
+        return True
+    if due_filter in OVERDUE_FILTERS and column not in ("backlog", "doing"):
+        return False
+    due = date.fromisoformat(task["due"]) if task["due"] else None
+    return test(due, date.today())
+
+
+def visible_tasks(tasks, column, show_tags, hide_tags, due_filter, sort_by):
     shown = [
         t
         for t in tasks
         if (not show_tags or set(t["tags"]) & set(show_tags))
         and not set(t["tags"]) & set(hide_tags)
+        and due_matches(t, column, due_filter)
     ]
     if SORTS[sort_by]:
         key, reverse = SORTS[sort_by]
@@ -361,6 +395,9 @@ with st.container(horizontal=True, vertical_alignment="bottom"):
     hide_tags = st.multiselect(
         "Hide Tags", all_tags, key="hide_tags", placeholder="None Hidden"
     )
+    due_filter = st.selectbox(
+        "Due", list(DUE_FILTERS), key="due_filter", width=190
+    )
     sort_by = st.selectbox("Sort By", list(SORTS), key="sort_by", width=180)
     grouped = st.toggle("Group by Tag", key="group_by_tag")
     if st.button("Remember Device", icon=":material/devices:"):
@@ -376,7 +413,9 @@ with st.container(horizontal=True, vertical_alignment="bottom"):
 # the open/closed state when the task count in the label changes.
 for col, (column, (heading, _)) in zip(st.columns(3), COLUMNS.items()):
     tasks = st.session_state.board[column]
-    shown = visible_tasks(tasks, show_tags, hide_tags, sort_by)
+    shown = visible_tasks(
+        tasks, column, show_tags, hide_tags, due_filter, sort_by
+    )
     count = f"{len(shown)} of {len(tasks)}" if len(shown) < len(tasks) else len(tasks)
     with col, st.expander(
         f"{heading} ({count})", expanded=True, key=f"group_{column}"
@@ -400,7 +439,9 @@ for col, (column, (heading, _)) in zip(st.columns(3), COLUMNS.items()):
 
 # Archived tasks, newest first unless another sort is chosen
 archived = st.session_state.board["archive"]
-shown = visible_tasks(archived, show_tags, hide_tags, sort_by)
+shown = visible_tasks(
+    archived, "archive", show_tags, hide_tags, due_filter, sort_by
+)
 if not SORTS[sort_by]:
     shown.reverse()
 count = f"{len(shown)} of {len(archived)}" if len(shown) < len(archived) else len(archived)
