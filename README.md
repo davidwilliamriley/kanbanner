@@ -24,3 +24,5 @@ $ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 Before the board will open, logins and storage need to be set up in your
 Streamlit secrets. See [docs/admin.md](docs/admin.md) for that, and for weekly backups and restoring them.
+
+REM : Updates to force a Rebuild 
