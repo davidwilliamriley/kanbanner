@@ -451,7 +451,13 @@ with st.container(horizontal=True, vertical_alignment="bottom"):
     due_filter = st.selectbox(
         "Due", list(DUE_FILTERS), key="due_filter", width=190
     )
-    sort_by = st.selectbox("Sort By", list(SORTS), key="sort_by", width=180)
+    sort_by = st.selectbox(
+        "Sort By",
+        list(SORTS),
+        index=list(SORTS).index("Due Date"),
+        key="sort_by",
+        width=180,
+    )
     grouped = st.toggle("Group by Tag", key="group_by_tag")
     if st.button("Remember Device", icon=":material/devices:"):
         remember_device_dialog()
