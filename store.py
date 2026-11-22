@@ -8,8 +8,12 @@ Pick the backend in Streamlit secrets:
 
 A board is {"backlog": [...], "doing": [...], "review": [...], "archive": [...]}
 and every task carries an "id". The app changes tasks only through a store's
-add / update / move / delete / archive_all methods, so both backends behave
-the same way.
+add / update / move / delete / archive_all / set_next methods, so both backends
+behave the same way.
+
+At most one task is pinned as the board's "next action" (its "next" flag is
+True). Only Backlog and Doing tasks can hold the pin; moving a task anywhere
+else unpins it.
 """
 
 import threading
@@ -20,6 +24,7 @@ from pathlib import Path
 import requests
 
 COLUMNS = ("backlog", "doing", "review")
+PINNABLE = ("backlog", "doing")
 STATUSES = (*COLUMNS, "archive")
 SCHEMA = Path(__file__).with_name("schema.sql").read_text(encoding="utf-8")
 
@@ -70,6 +75,8 @@ def normalize_task(task):
     }
     if task.get("archived"):
         normalized["archived"] = task["archived"]
+    if task.get("next"):
+        normalized["next"] = True
     return normalized
 
 
@@ -140,6 +147,8 @@ class JsonBinStore:
         current, i = self._find(board, task_id)
         if current is None:
             return
+        if board[current][i].get("next") and status in PINNABLE:
+            task["next"] = True
         if status == current:
             board[current][i] = task
         else:
@@ -152,6 +161,8 @@ class JsonBinStore:
         if current is None:
             return
         task = board[current].pop(i)
+        if target not in PINNABLE:
+            task.pop("next", None)
         if target == "archive":
             task["archived"] = today.isoformat()
         else:
@@ -171,6 +182,16 @@ class JsonBinStore:
             task["archived"] = today.isoformat()
         board["archive"].extend(board["review"])
         board["review"] = []
+        self._save(board)
+
+    def set_next(self, board, task_id):
+        """Pin this task as the next action; None clears the pin."""
+        for tasks in board.values():
+            for task in tasks:
+                if task["id"] == task_id:
+                    task["next"] = True
+                else:
+                    task.pop("next", None)
         self._save(board)
 
 
@@ -225,12 +246,15 @@ class NeonStore:
 
     def load(self):
         rows = self._run(
-            "select id, title, description, due, created, tags, status, archived"
+            "select id, title, description, due, created, tags, status, archived,"
+            " is_next"
             " from tasks order by position, created, id",
             fetch=True,
         )
         board = empty_board()
-        for id_, title, description, due, created, tags, status, archived in rows:
+        for (
+            id_, title, description, due, created, tags, status, archived, is_next
+        ) in rows:
             task = {
                 "id": str(id_),
                 "title": title,
@@ -241,6 +265,8 @@ class NeonStore:
             }
             if archived:
                 task["archived"] = archived.isoformat()
+            if is_next:
+                task["next"] = True
             board.setdefault(status, []).append(task)
         return board
 
@@ -260,6 +286,7 @@ class NeonStore:
             " due = %(due)s, tags = %(tags)s,"
             " position = case when status = %(status)s then position"
             f" else {self._NEXT_POSITION} end,"
+            " is_next = is_next and %(status)s in ('backlog', 'doing'),"
             " status = %(status)s, updated_at = now() where id = %(id)s",
             {**task, "id": task_id, "status": status},
         )
@@ -267,7 +294,9 @@ class NeonStore:
     def move(self, board, task_id, target, today):
         self._run(
             f"update tasks set status = %(status)s, position = {self._NEXT_POSITION},"
-            " archived = %(archived)s, updated_at = now() where id = %(id)s",
+            " archived = %(archived)s, updated_at = now(),"
+            " is_next = is_next and %(status)s in ('backlog', 'doing')"
+            " where id = %(id)s",
             {
                 "id": task_id,
                 "status": target,
@@ -288,4 +317,12 @@ class NeonStore:
             " position = base.p + ordered.rn, updated_at = now()"
             " from ordered, base where t.id = ordered.id",
             {"today": today},
+        )
+
+    def set_next(self, board, task_id):
+        # One statement, so there is never a moment with two (or no) pins
+        self._run(
+            "update tasks set is_next = coalesce(id::text = %(id)s::text, false)"
+            " where is_next or id::text = %(id)s::text",
+            {"id": task_id},
         )
