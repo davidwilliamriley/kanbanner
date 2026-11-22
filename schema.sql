@@ -14,3 +14,6 @@ create table if not exists tasks (
     updated_at timestamptz not null default now()
 );
 create index if not exists tasks_status_position on tasks (status, position);
+-- The pinned "next action" (at most one task). Added after the table first
+-- shipped, so existing databases get the column on their next connection.
+alter table tasks add column if not exists is_next boolean not null default false;

@@ -4,7 +4,7 @@ from datetime import date
 import streamlit as st
 
 from auth import LINK_PARAM, log_out, remember_link, require_login
-from store import StoreError, get_store, make_task
+from store import PINNABLE, StoreError, get_store, make_task
 
 st.set_page_config(page_title="Kanbanner", page_icon="📌", layout="wide")
 
@@ -142,6 +142,36 @@ def group_by_tag(shown, show_tags):
     return [(g, groups[g]) for g in order + ([None] if None in groups else [])]
 
 
+def next_candidates():
+    # What to do when nothing is pinned: work already in flight first, then the
+    # Backlog by due date (overdue first, undated last), then board order
+    board = st.session_state.board
+    backlog = sorted(
+        board["backlog"], key=lambda t: (t["due"] is None, t["due"] or "")
+    )
+    return [("doing", t) for t in board["doing"]] + [("backlog", t) for t in backlog]
+
+
+def find_pinned():
+    for column in PINNABLE:
+        for task in st.session_state.board[column]:
+            if task.get("next"):
+                return column, task
+    return None
+
+
+def pin_task(task_id):
+    st.session_state.next_skip = 0
+    try:
+        store.set_next(st.session_state.board, task_id)
+    except StoreError as e:
+        report(e)
+
+
+def skip_next():
+    st.session_state.next_skip += 1
+
+
 def clear_search():
     st.session_state.search = ""
 
@@ -215,6 +245,8 @@ def render_archived(task):
 
 def render_task(task, column):
     lines = [f"**{task['title']}**"]
+    if task.get("next"):
+        lines[0] = "⭐ " + lines[0]
     if task["description"]:
         # Markdown joins single line breaks into one line; a trailing double
         # space keeps each typed line on its own line
@@ -245,6 +277,17 @@ def render_task(task, column):
                     type="tertiary",
                     on_click=move_task,
                     args=(task["id"], target),
+                )
+            if column in PINNABLE:
+                pinned = bool(task.get("next"))
+                st.button(
+                    "",
+                    key=f"pin_{task['id']}",
+                    icon=":material/star:" if pinned else ":material/star_outline:",
+                    help="Unpin Next Action" if pinned else "Make This the Next Action",
+                    type="tertiary",
+                    on_click=pin_task,
+                    args=(None if pinned else task["id"],),
                 )
             st.button(
                 "",
@@ -354,6 +397,65 @@ def remember_device_dialog():
         st.rerun()  # also closes the dialog
 
 
+def render_next_action():
+    # A pinned task always wins; otherwise suggest one, and let Skip cycle
+    pinned = find_pinned()
+    if pinned:
+        column, task = pinned
+        label = "⭐ Next Action"
+    else:
+        candidates = next_candidates()
+        if not candidates:
+            st.info("Nothing to do next. Add a task to get started.", icon="🎉")
+            return
+        column, task = candidates[st.session_state.next_skip % len(candidates)]
+        label = "▶ Suggested Next Action"
+    with st.container(border=True, key="next_action"):
+        st.caption(label)
+        with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+            lines = [f"### {task['title']}"]
+            meta = [COLUMNS[column][0], due_label(task, column)]
+            if task["tags"]:
+                meta.append(" ".join(tag_badge(t) for t in task["tags"]))
+            lines.append(" · ".join(m for m in meta if m))
+            st.markdown("\n\n".join(lines), width="stretch")
+            move_label, move_icon, target = QUICK_MOVES[column]
+            st.button(
+                move_label,
+                key="next_move",
+                icon=move_icon,
+                type="primary",
+                on_click=move_task,
+                args=(task["id"], target),
+            )
+            if pinned:
+                st.button(
+                    "Unpin",
+                    key="next_unpin",
+                    icon=":material/star:",
+                    on_click=pin_task,
+                    args=(None,),
+                )
+            else:
+                st.button(
+                    "Pin",
+                    key="next_pin",
+                    icon=":material/star_outline:",
+                    help="Keep This as the Next Action",
+                    on_click=pin_task,
+                    args=(task["id"],),
+                )
+                if len(candidates) > 1:
+                    st.button(
+                        "Skip",
+                        key="next_skip_btn",
+                        icon=":material/skip_next:",
+                        on_click=skip_next,
+                    )
+        if task["description"]:
+            st.caption(task["description"].splitlines()[0])
+
+
 user = require_login()
 
 
@@ -379,6 +481,8 @@ for tasks in st.session_state.board.values():
         t.setdefault("id", str(uuid.uuid4()))
 if "editing" not in st.session_state:
     st.session_state.editing = None
+if "next_skip" not in st.session_state:
+    st.session_state.next_skip = 0
 if "store_error" in st.session_state:
     st.error(st.session_state.pop("store_error"))
 
@@ -417,6 +521,7 @@ st.html(
 )
 
 st.title("📌 Kanbanner")
+render_next_action()
 
 # New task button, then search, filter, sort and group controls
 all_tags = board_tags()
