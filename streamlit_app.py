@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 import streamlit as st
 
@@ -456,6 +456,64 @@ def render_next_action():
             st.caption(task["description"].splitlines()[0])
 
 
+# Backlog tasks due within this many days (or already overdue) join the To-Do list
+TODO_DAYS = 7
+
+
+def todo_items():
+    # The pinned task first, then Doing and soon-due Backlog tasks: overdue
+    # first, then by due date, undated last (Doing before Backlog on a tie)
+    board = st.session_state.board
+    horizon = (date.today() + timedelta(days=TODO_DAYS)).isoformat()
+    items = [("doing", t) for t in board["doing"]] + [
+        ("backlog", t) for t in board["backlog"] if t["due"] and t["due"] <= horizon
+    ]
+    items.sort(
+        key=lambda it: (
+            not it[1].get("next"),
+            it[1]["due"] is None,
+            it[1]["due"] or "",
+        )
+    )
+    return items
+
+
+def todo_markdown(items):
+    lines = []
+    for _, task in items:
+        due = f" (due {task['due']})" if task["due"] else ""
+        lines.append(f"- [ ] {task['title']}{due}")
+    return "\n".join(lines) + "\n"
+
+
+def render_todo():
+    items = todo_items()
+    with st.expander(f"To-Do ({len(items)})", expanded=True, key="group_todo"):
+        if not items:
+            st.caption("Nothing in Doing or due within 7 days.")
+            return
+        for column, task in items:
+            label = ("⭐ " if task.get("next") else "") + task["title"]
+            due = due_label(task, column)
+            if due:
+                label += f"  \n:small[{due}]"
+            st.checkbox(
+                label,
+                key=f"todo_{task['id']}",
+                value=False,
+                help="Check to Move to Review",
+                on_change=move_task,
+                args=(task["id"], "review"),
+            )
+        st.download_button(
+            "Download as Markdown",
+            todo_markdown(items),
+            file_name=f"todo-{date.today().isoformat()}.md",
+            mime="text/markdown",
+            icon=":material/download:",
+        )
+
+
 user = require_login()
 
 
@@ -522,6 +580,7 @@ st.html(
 
 st.title("📌 Kanbanner")
 render_next_action()
+render_todo()
 
 # New task button, then search, filter, sort and group controls
 all_tags = board_tags()
